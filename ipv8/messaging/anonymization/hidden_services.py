@@ -121,9 +121,9 @@ class HiddenTunnelCommunity(TunnelCommunity):
         return destroy_deferred
 
     def do_dht_lookup(self, info_hash):
-        self.do_raw_dht_lookup(self.get_lookup_info_hash(info_hash))
+        self.do_raw_dht_lookup(self.get_lookup_info_hash(info_hash), None)
 
-    def do_raw_dht_lookup(self, lookup_info_hash):
+    def do_raw_dht_lookup(self, lookup_info_hash, info_hash):
         # Select a circuit from the pool of exit circuits
         self.logger.info("Do DHT request: select circuit")
         circuit = self.selection_strategy.select(None, self.hops[lookup_info_hash])
@@ -134,13 +134,22 @@ class HiddenTunnelCommunity(TunnelCommunity):
         # Send a dht-request message over this circuit
         self.logger.info("Do DHT request: send dht request")
         self.last_dht_lookup[lookup_info_hash] = time.time()
-        cache = self.request_cache.add(DHTRequestCache(self, circuit, lookup_info_hash))
+        cache = self.request_cache.add(DHTRequestCache(self, circuit, lookup_info_hash, False))
+
         self.send_cell([circuit.peer],
                        u"dht-request",
                        DHTRequestPayload(circuit.circuit_id, cache.number, lookup_info_hash))
 
+        if info_hash and lookup_info_hash != info_hash:
+            cache = self.request_cache.add(DHTRequestCache(self, circuit, info_hash, True))
+            self.send_cell([circuit.peer],
+                           u"dht-request",
+                           DHTRequestPayload(circuit.circuit_id, cache.number, info_hash))
+
     @tc_lazy_wrapper_unsigned(DHTRequestPayload)
     def on_dht_request(self, source_address, payload, circuit_id):
+    def on_dht_request(self, source_address, payload, circuit_id):
+        # dist, payload = self._ez_unpack_noauth(DHTRequestPayload, payload)
         info_hash = payload.info_hash
 
         def dht_callback(info):
@@ -166,8 +175,6 @@ class HiddenTunnelCommunity(TunnelCommunity):
         if not self.is_relay(payload.circuit_id) and not self.request_cache.has(u"dht-request", payload.identifier):
             self.logger.warning('Got a dht-response with an unknown identifier')
             return
-
-        self.request_cache.pop(u"dht-request", payload.identifier)
 
         info_hash = payload.info_hash
         _, peers = decode(payload.peers)

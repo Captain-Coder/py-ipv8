@@ -120,10 +120,11 @@ class KeyRequestCache(RandomNumberCache):
 
 class DHTRequestCache(RandomNumberCache):
 
-    def __init__(self, community, circuit, info_hash):
+    def __init__(self, community, circuit, info_hash, is_real):
         super(DHTRequestCache, self).__init__(community.request_cache, u"dht-request")
         self.circuit = circuit
         self.info_hash = info_hash
+        self.is_real = is_real
 
     def on_timeout(self):
         pass
